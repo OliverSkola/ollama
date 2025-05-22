@@ -1,6 +1,7 @@
 package benchmark
 
-import "wandb"
+import "github.com/ollama/ollama/benchmark/wandb"
+
 
 
 import (
