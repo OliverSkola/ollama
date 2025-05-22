@@ -1,5 +1,8 @@
 package benchmark
 
+import "wandb"
+
+
 import (
 	"context"
 	"flag"
@@ -48,23 +51,44 @@ func runGenerateBenchmark(b *testing.B, ctx context.Context, client *api.Client,
 		return nil
 	})
 
-	// Report custom metrics as part of the benchmark results
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	// Standard Go benchmark metrics
 	b.ReportMetric(float64(ttft.Milliseconds()), "ttft_ms")
 	b.ReportMetric(float64(metrics.LoadDuration.Milliseconds()), "load_ms")
 
-	// Token throughput metrics
 	promptThroughput := float64(metrics.PromptEvalCount) / metrics.PromptEvalDuration.Seconds()
 	genThroughput := float64(metrics.EvalCount) / metrics.EvalDuration.Seconds()
 	b.ReportMetric(promptThroughput, "prompt_tok/s")
 	b.ReportMetric(genThroughput, "gen_tok/s")
 
-	// Token counts
 	b.ReportMetric(float64(metrics.PromptEvalCount), "prompt_tokens")
 	b.ReportMetric(float64(metrics.EvalCount), "gen_tokens")
+
+	// 🔥 Log to Weights & Biases
+	wb := wandb.NewWandbClient()
+	runName := fmt.Sprintf("benchmark-%s-%s", req.Model, time.Now().Format("20060102-150405"))
+
+	if err := wb.StartRun(runName); err != nil {
+		b.Logf("W&B start error: %v", err)
+		return
+	}
+
+	err = wb.LogMetrics(1, map[string]float64{
+		"ttft_ms":        float64(ttft.Milliseconds()),
+		"load_ms":        float64(metrics.LoadDuration.Milliseconds()),
+		"prompt_tok/s":   promptThroughput,
+		"gen_tok/s":      genThroughput,
+		"prompt_tokens":  float64(metrics.PromptEvalCount),
+		"gen_tokens":     float64(metrics.EvalCount),
+	})
 	if err != nil {
-		b.Fatal(err)
+		b.Logf("W&B log error: %v", err)
 	}
 }
+
 
 // BenchmarkColdStart runs benchmarks with model loading from cold state
 func BenchmarkColdStart(b *testing.B) {
